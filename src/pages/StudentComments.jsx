@@ -1,0 +1,6 @@
+import StudentLayout from '../layouts/StudentLayout';
+import StudentPageHeader from '../components/StudentPageHeader';
+import { profileStorage,teacherAvatarSrc } from '../utils/profileStorage';
+import usePrototypeData from '../hooks/usePrototypeData';
+import { useAuth } from '../auth/AuthContext';
+export default function StudentComments(){const teacher=profileStorage.getTeacherProfile(),{user}=useAuth(),data=usePrototypeData(),comments=(data.comments||[]).filter(comment=>comment.studentId===user?.uid);return <StudentLayout><div className="student-page subpage"><StudentPageHeader eyebrow="COMMENTS" title="Messages from my teacher" subtitle={`Feedback and encouragement from ${teacher.displayName||teacher.name}.`}/><section className="comment-history">{comments.map(comment=><article className="panel comment-history-card" key={comment.id}><img className="teacher-comment-avatar" src={teacherAvatarSrc(teacher)} alt="Teacher avatar"/><div><header><div><h3>{teacher.displayName||teacher.name}</h3><span>{comment.relatedTo}</span></div><time>{comment.date}</time></header><p>“{comment.text}”</p></div></article>)}</section>{!comments.length&&<div className="panel student-data-state">No teacher comments yet.</div>}</div></StudentLayout>}

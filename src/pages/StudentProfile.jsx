@@ -1,0 +1,48 @@
+import { useMemo,useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { ExternalLink,MessageSquarePlus,Plus,ArrowUpRight,Headphones,Mic2,BookOpen,PenLine } from 'lucide-react';
+import TeacherLayout from '../layouts/TeacherLayout';
+import Avatar from '../components/Avatar';
+import Modal from '../components/Modal';
+import { Ring,ProgressBar } from '../components/Progress';
+import LineChart from '../components/LineChart';
+import AchievementBadge from '../components/AchievementBadge';
+import { classAverages,extraTasks,studentAssessmentHistory,studentGoals } from '../data/mockData';
+import { evaluateAchievements } from '../utils/achievementEngine';
+import { prototypeStorage } from '../utils/prototypeStorage';
+import { profileStorage } from '../utils/profileStorage';
+import useFirestoreStudentProgress from '../hooks/useFirestoreStudentProgress';
+import { useFirestoreStudent } from '../hooks/useFirestoreStudents';
+import { gradeLabel } from '../utils/gradeMapping';
+
+const icons={Listening:Headphones,Speaking:Mic2,Reading:BookOpen,Writing:PenLine};
+const tabs=['Обзор','Результаты','Достижения','Комментарии','Extra Tasks'];
+export default function StudentProfile(){
+  const {id}=useParams();
+  const {student:firestoreStudent,loading:profileLoading,error:profileError}=useFirestoreStudent(id);
+  const student=firestoreStudent||{id,name:'Loading student…',displayName:'',gradeId:'',classId:'',avatarId:'girl-1',active:false,color:'#7c5cff'};
+  const {assessmentsWithResults:resultHistory,overallPercentage,skillPercentages,latestResults,chartData,loading:resultsLoading,error:resultsError}=useFirestoreStudentProgress(id);
+  const [tab,setTab]=useState('Обзор');
+  const [taskOpen,setTaskOpen]=useState(false);
+  const [commentOpen,setCommentOpen]=useState(false);
+  const [profileTasks,setProfileTasks]=useState([...prototypeStorage.get().extraTasks,...extraTasks].filter(t=>t.studentId===id));
+  const [profileComments,setProfileComments]=useState(prototypeStorage.comments().filter(c=>c.studentId===id));
+  const [commentForm,setCommentForm]=useState({text:'',context:'General'});
+  const [form,setForm]=useState({title:'',description:'',url:'',dueDate:'',target:'student'});
+  const achievements=useMemo(()=>evaluateAchievements({student,assessments:studentAssessmentHistory,results:studentAssessmentHistory,goals:studentGoals}),[student]);
+  const createTask=()=>{if(!form.title.trim())return;const task={id:`extra-local-${Date.now()}`,studentId:student.id,title:form.title,description:form.description,url:form.url||null,dueDate:form.dueDate||null,target:{type:form.target,id:form.target==='student'?student.id:student.classId},status:'Assigned'};prototypeStorage.addExtraTask(task);setProfileTasks(items=>[task,...items]);setTaskOpen(false);setForm({title:'',description:'',url:'',dueDate:'',target:'student'});setTab('Extra Tasks')};
+  const saveComment=()=>{if(!commentForm.text.trim())return;const teacher=profileStorage.getTeacherProfile(),comment={id:`comment-${Date.now()}`,studentId:student.id,author:teacher.name,date:new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}),relatedTo:commentForm.context,text:commentForm.text};prototypeStorage.addComment(comment);setProfileComments(items=>[comment,...items]);setCommentOpen(false);setCommentForm({text:'',context:'General'});setTab('Комментарии')};
+  if(profileLoading)return <TeacherLayout title="Профиль ученика" subtitle="Firestore student profile"><div className="panel student-data-state">Loading student profile…</div></TeacherLayout>;
+  if(profileError||!firestoreStudent)return <TeacherLayout title="Профиль ученика" subtitle="Firestore student profile"><div className="panel student-data-state error">{profileError||'Student profile was not found.'}</div></TeacherLayout>;
+  return <TeacherLayout title="Профиль ученика" subtitle="Подробный обзор прогресса" actions={<div className="head-actions"><button className="secondary" onClick={()=>setTaskOpen(true)}><Plus size={17}/> Дополнительное задание</button><button className="primary" onClick={()=>setCommentOpen(true)}><MessageSquarePlus size={17}/> Добавить комментарий</button></div>}>
+    <section className="panel profile-hero"><Avatar student={student} size="xl"/><div className="profile-title"><h2>{student.name}</h2><p>Класс {gradeLabel(student.gradeId)} · {student.email}</p><span>{student.active?'Активный ученик':'Неактивный ученик'}</span></div><div className="hero-stat"><Ring value={overallPercentage??0} size={112} label={overallPercentage==null?'нет данных':'общий'}/></div><div className="compare"><span>Средний по классу</span><strong>{classAverages.overall}%</strong><small>Среднее по классу пока демонстрационное</small></div></section>
+    <div className="tabs">{tabs.map(t=><button className={tab===t?'active':''} onClick={()=>setTab(t)} key={t}>{t}</button>)}</div>
+    {tab==='Обзор'&&<><section className="skill-grid">{Object.entries(skillPercentages).map(([skill,value])=>{const Icon=icons[skill];return <article className="panel skill-card" key={skill}><span className={`mini-icon ${skill.toLowerCase()}`}><Icon size={19}/></span><div><span>{skill}</span><strong>{value==null?'—':`${value}%`}</strong></div><ProgressBar value={value??0}/><small>{value==null?'Нет данных':'По завершённым работам'}</small></article>})}</section><section className="dashboard-columns profile-columns"><article className="panel chart-panel"><div className="panel-head"><div><h3>Прогресс со временем</h3><p>Реальные завершённые работы ученика</p></div></div>{resultsLoading?<div className="student-data-state">Loading live results…</div>:chartData.values.length?<LineChart labels={chartData.labels} series={[{name:student.name,values:chartData.values}]}/>:<div className="student-data-state">No completed assessments yet.</div>}</article><article className="panel recent-list"><div className="panel-head"><div><h3>Последние работы</h3><p>Firestore results</p></div></div>{resultsError&&<div className="student-data-state error">{resultsError}</div>}{!resultsLoading&&!resultsError&&!latestResults.length&&<div className="student-data-state">No completed assessments yet.</div>}{latestResults.map(item=><div className="recent" key={item.resultId}><div><b>{item.title}</b><small>{item.term} · {item.rawScore}</small></div><strong>{item.percentage}%</strong></div>)}</article></section></>}
+    {tab==='Результаты'&&<section className="panel teacher-result-list">{resultsLoading&&<div className="student-data-state">Loading live result…</div>}{resultsError&&<div className="student-data-state error">{resultsError}</div>}{resultHistory.map(item=><article key={item.id}><div><b>{item.title}</b><small>{item.term} · {item.skills.join(', ')}</small></div><span>{item.rawScore||'—'}</span><strong>{item.percentage==null?item.status:`${item.percentage}%`}</strong></article>)}</section>}
+    {tab==='Достижения'&&<section className="achievement-grid">{achievements.map(a=><AchievementBadge item={a} key={a.id}/>)}</section>}
+    {tab==='Комментарии'&&<section className="panel comments-list">{profileComments.map(c=><article key={c.id}><div><b>{c.author}</b><small>{c.date} · {c.relatedTo}</small></div><p>{c.text}</p></article>)}</section>}
+    {tab==='Extra Tasks'&&<section className="teacher-extra-list">{profileTasks.map(task=><article className="panel" key={task.id}><div><span className={`status-pill ${task.status.toLowerCase()}`}>{task.status}</span><h3>{task.title}</h3><p>{task.description}</p><small>{task.dueDate?`Срок: ${task.dueDate}`:'Без срока'} · {task.target.type==='class'?'Весь класс':'Один ученик'}</small></div>{task.url&&<a href={task.url} target="_blank" rel="noreferrer"><ExternalLink size={17}/></a>}</article>)}{!profileTasks.length&&<div className="panel empty-state">Дополнительных заданий пока нет.</div>}</section>}
+    {taskOpen&&<Modal title="Дополнительное задание" onClose={()=>setTaskOpen(false)} footer={<><button className="secondary" onClick={()=>setTaskOpen(false)}>Отмена</button><button className="primary" onClick={createTask}>Создать задание</button></>}><div className="modal-form"><label>Название<input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="Например, Writing Booster"/></label><label>Описание<textarea value={form.description} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Что нужно выполнить?"/></label><div className="form-grid"><label>Ссылка (необязательно)<input type="url" value={form.url} onChange={e=>setForm({...form,url:e.target.value})} placeholder="https://..."/></label><label>Срок (необязательно)<input type="date" value={form.dueDate} onChange={e=>setForm({...form,dueDate:e.target.value})}/></label></div><label>Кому<select value={form.target} onChange={e=>setForm({...form,target:e.target.value})}><option value="student">{student.name}</option><option value="class">Весь класс 6В</option></select></label></div></Modal>}
+    {commentOpen&&<Modal title="Добавить комментарий" onClose={()=>setCommentOpen(false)} footer={<><button className="secondary" onClick={()=>setCommentOpen(false)}>Отмена</button><button className="primary" disabled={!commentForm.text.trim()} onClick={saveComment}>Сохранить комментарий</button></>}><div className="modal-form"><label>Комментарий<textarea rows="5" value={commentForm.text} onChange={e=>setCommentForm({...commentForm,text:e.target.value})} placeholder="Напишите обратную связь ученику..."/></label><label>Контекст<select value={commentForm.context} onChange={e=>setCommentForm({...commentForm,context:e.target.value})}><option>General</option><option>Term</option><option>Assessment</option></select></label></div></Modal>}
+  </TeacherLayout>
+}

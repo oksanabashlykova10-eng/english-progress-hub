@@ -1,0 +1,11 @@
+import { useRef,useState } from 'react';
+import TeacherLayout from '../layouts/TeacherLayout';
+import { DEFAULT_TEACHER_PROFILE,profileStorage,teacherAvatarSrc } from '../utils/profileStorage';
+
+export default function TeacherSettings(){
+  const [profile,setProfile]=useState(profileStorage.getTeacherProfile);const [url,setUrl]=useState(profile.avatar.type==='url'?profile.avatar.value:'');const [error,setError]=useState('');const input=useRef();
+  const save=next=>{setProfile(next);profileStorage.setTeacherProfile(next)};
+  const upload=e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>2*1024*1024){setError('Image must be 2 MB or smaller.');return}setError('');const reader=new FileReader();reader.onload=()=>save({...profile,avatar:{type:'upload',value:reader.result}});reader.onerror=()=>setError('Unable to read this image.');reader.readAsDataURL(file)};
+  const useUrl=()=>{if(!/^https:\/\//i.test(url)){setError('Enter a valid https:// image URL.');return}setError('');save({...profile,avatar:{type:'url',value:url}})};
+  return <TeacherLayout title="Настройки" subtitle="Профиль учителя"><section className="panel teacher-settings"><div className="teacher-settings-preview"><img src={teacherAvatarSrc(profile)} alt="Teacher avatar" onError={e=>{e.currentTarget.src=DEFAULT_TEACHER_PROFILE.avatar.value;setError('Unable to load this image')}}/><div><h2>Teacher Profile</h2><p>Настройки сохраняются на этом устройстве.</p></div></div><label>Teacher name<input value={profile.name} onChange={e=>setProfile({...profile,name:e.target.value})} onBlur={()=>save(profile)}/></label><div className="settings-actions"><button className="secondary" onClick={()=>save({...profile,avatar:DEFAULT_TEACHER_PROFILE.avatar})}>Use default avatar</button><button className="secondary" onClick={()=>input.current.click()}>Upload image</button><input ref={input} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={upload}/></div><label>Image URL<div className="url-row"><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://..."/><button className="primary" onClick={useUrl}>Preview</button></div></label>{error&&<p className="form-error" role="alert">{error}</p>}</section></TeacherLayout>
+}
